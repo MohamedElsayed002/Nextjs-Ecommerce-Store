@@ -1,4 +1,5 @@
 'use client'
+import { userOrderExists } from "@/app/actions/orders"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { formatCurrency } from "@/lib/formatters"
@@ -10,6 +11,7 @@ import { FormEvent, useState } from "react"
 
 type CheckOutFormProps = {
     product: {
+        id : string
         imagePath: string
         name: string
         priceInCents: number
@@ -41,28 +43,40 @@ export function CheckoutForm({ product, clientSecret }: CheckOutFormProps) {
                 </div>
 
                 <Elements options={{ clientSecret }} stripe={stripePromise}>
-                    <Form priceInCents={product.priceInCents} />
+                    <Form productId={product.id} priceInCents={product.priceInCents} />
                 </Elements>
             </div>
         </>
     )
 }
 
-function Form({ priceInCents }: { priceInCents: number }) {
+function Form({ priceInCents , productId  }: { priceInCents: number , productId : string }) {
     const stripe = useStripe()
     const elements = useElements()
     const [loading, setLoading] = useState(false)
     const [errorMessage, setErrorMessage] = useState<string>()
-    function handleSubmit(e: FormEvent) {
+    const [email,setEmail] = useState<string>()
+    
+    
+    async function handleSubmit(e: FormEvent) {
         e.preventDefault()
-        if (stripe == null || elements == null) return
+        if (stripe == null || elements == null || email == null) return
 
         setLoading(true)
 
         // check for exisiting order
+        const orderExists = await userOrderExists(email,productId)
+
+        if(orderExists) {
+            setErrorMessage("You have alrady purchased this product. try downloading it from the My orders page")
+            setLoading(false)
+            return
+        }
+
+
         stripe.confirmPayment({
             elements, confirmParams: {
-                return_url: `${process.env.NEXT_PUBLIC_STRIPE_PUBLIC_KEY}/stripe/purchase-success`
+                return_url: `${process.env.NEXT_PUBLIC_SERVER_URL}/stripe/purchase-success`
             }
         }).then(({ error }) => {
             if (error.type === 'card_error' || error.type === 'validation_error') {
@@ -88,7 +102,7 @@ function Form({ priceInCents }: { priceInCents: number }) {
                 <CardContent>
                     <PaymentElement />
                     <div className='mt-4'>
-                        <LinkAuthenticationElement />
+                        <LinkAuthenticationElement onChange={e => setEmail(e.value.email)} />
                     </div>
                 </CardContent>
                 <CardFooter>
